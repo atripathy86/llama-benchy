@@ -36,7 +36,8 @@ Pseudocode:
         exit==0 and valid JSON report -> ok, else failed (record exit code + log tail)
 
     write combined summary: one pp + one tg row per report entry
-        -> <out>/summary.md + <out>/summary.json; print failures with log tails
+        -> <out>/summary.md + <out>/summary.json; write <out>/<model>.md
+        mirroring each model's report; print failures with log tails
     exit 0 if all models ok else 1
 
 Profiles (all use --latency-mode generation and --runs/--warmup-runs as given):
@@ -88,7 +89,7 @@ Examples:
   python3 scripts/bench_models.py --base-url http://localhost:8000/v1 --models model-a,model-b --profile smoke
   python3 scripts/bench_models.py --base-url http://localhost:8000/v1 --all --profile sweep --dry-run
 
-Results:  <output-dir>/<model>.json + <output-dir>/summary.{md,json}
+Results:  <output-dir>/<model>.json + <output-dir>/<model>.md + <output-dir>/summary.{md,json}
 Logs:     <output-dir>/logs/<model>.log
 """
 
@@ -482,6 +483,37 @@ def collect_rows(report):
     return rows
 
 
+def write_model_markdown(res, args, profile):
+    md_path = Path(res["json_path"]).with_suffix(".md")
+    report = res["report"]
+    rows = collect_rows(report)
+    any_cc = any((e.get("concurrency") or 1) > 1 for e in report.get("benchmarks", []))
+    cols = ["test", "t/s"]
+    if any_cc:
+        cols.append("t/s (req)")
+    cols += ["peak t/s", "ttfr (ms)", "est_ppt (ms)", "e2e_ttft (ms)"]
+    lines = [
+        f"# llama-benchy report: {res['model']}",
+        "",
+        f"- endpoint: `{args.base_url}`",
+        f"- profile: `{profile}` ({PROFILES[profile]['desc']})",
+        f"- generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"- runs: {args.runs} (+{args.warmup_runs} warmup) | latency-mode: {report.get('latency_mode', 'generation')}",
+        f"- exit: {res['exit_code']} | elapsed: {fmt_elapsed(res['elapsed'])}",
+        "",
+        "| " + " | ".join(cols) + " |",
+        "|" + "|".join("---:" if c != "test" else "---" for c in cols) + "|",
+    ]
+    for row in rows:
+        cells = [row["test"], row["t/s"]]
+        if any_cc:
+            cells.append(row["t/s (req)"])
+        cells += [row["peak t/s"], row["ttfr (ms)"], row["est_ppt (ms)"], row["e2e_ttft (ms)"]]
+        lines.append("| " + " | ".join(cells) + " |")
+    md_path.write_text("\n".join(lines) + "\n")
+    return md_path
+
+
 def write_summary(out_dir, args, profile, jobs, results):
     md_cols = ["model", "test", "t/s", "peak t/s", "ttfr (ms)", "est_ppt (ms)", "e2e_ttft (ms)"]
     any_cc = any((r.get("concurrency") or 1) > 1 for res in results if res["report"] for r in res["report"].get("benchmarks", []))
@@ -704,12 +736,15 @@ def main():
             if report is None:
                 reasons.append("missing or invalid JSON report")
             error = "; ".join(reasons) or "unknown error"
-        results.append({
+        res = {
             "model": j["model"], "status": status, "exit_code": rc,
             "elapsed": (j["end"] or time.time()) - j["start"],
             "report": report, "error": error, "log_path": j["log_path"],
-            "json_path": j["json_path"],
-        })
+            "json_path": j["json_path"], "md_path": None,
+        }
+        if res["report"] is not None:
+            res["md_path"] = str(write_model_markdown(res, args, profile))
+        results.append(res)
 
     md_path = write_summary(out_dir, args, profile, jobs, results)
 
@@ -721,7 +756,7 @@ def main():
     print(f"\nSummary:   {md_path}")
     print(f"Machine:   {out_dir / 'summary.json'}")
     for r in ok:
-        print(f"  report:   {r['model']} -> {r['json_path']}")
+        print(f"  report:   {r['model']} -> {r['json_path']} (+ .md)")
     if bad:
         print("\nFailure details (last log lines):")
         for r in bad:
