@@ -19,6 +19,7 @@ Pseudocode:
                   if d + max(pp) + max(tg) + margin <= (max_input_tokens or unknown-cap)]
 
     print plan (models, resolved depths, contamination warning)
+    print equivalent non-interactive command (api-key omitted when taken from env)
     if --dry-run: print each resolved command and exit
 
     launch one llama-benchy subprocess PER MODEL, all at the same time:
@@ -161,7 +162,14 @@ def parse_args():
     p.add_argument("--dry-run", action="store_true", help="Show model list and resolved commands, then exit")
     p.add_argument("--yes", action="store_true", help="Skip the launch confirmation prompt")
     args, extras = p.parse_known_args()
-    return args, extras
+    explicit = {
+        flag for flag in (
+            "--api-key", "--pp", "--tg", "--depth", "--concurrency",
+            "--runs", "--warmup-runs", "--output-dir", "--unknown-cap", "--margin",
+        )
+        if flag in sys.argv or any(a.startswith(flag + "=") for a in sys.argv)
+    }
+    return args, extras, explicit
 
 
 def parse_compact_models(text):
@@ -530,9 +538,37 @@ def write_summary(out_dir, args, profile, jobs, results):
     (out_dir / "summary.json").write_text(json.dumps(summary_json, indent=2) + "\n")
     return md_path
 
+def equivalent_command(args, explicit, selected, profile, extras):
+    cmd = ["python3", sys.argv[0], "--base-url", args.base_url]
+    if "--api-key" in explicit:
+        cmd += ["--api-key", args.api_key]
+    cmd += ["--models", ",".join(selected), "--profile", profile]
+    if "--pp" in explicit:
+        cmd += ["--pp", *[str(v) for v in args.pp]]
+    if "--tg" in explicit:
+        cmd += ["--tg", *[str(v) for v in args.tg]]
+    if "--depth" in explicit:
+        cmd += ["--depth", *[str(v) for v in args.depth]]
+    if "--concurrency" in explicit:
+        cmd += ["--concurrency", *[str(v) for v in args.concurrency]]
+    if args.enable_prefix_caching:
+        cmd.append("--enable-prefix-caching")
+    if args.runs != 3:
+        cmd += ["--runs", str(args.runs)]
+    if args.warmup_runs != 1:
+        cmd += ["--warmup-runs", str(args.warmup_runs)]
+    if args.output_dir != "results":
+        cmd += ["--output-dir", args.output_dir]
+    if args.unknown_cap != 32768:
+        cmd += ["--unknown-cap", str(args.unknown_cap)]
+    if args.margin != 512:
+        cmd += ["--margin", str(args.margin)]
+    return " ".join(cmd + list(extras))
+
 
 def main():
-    args, extras = parse_args()
+
+    args, extras, explicit = parse_args()
     models = fetch_models(args.base_url, args.api_key)
     excluded = [m["id"] for m in models if EXCLUDE_RE.search(m["id"])]
     candidates = [m for m in models if not EXCLUDE_RE.search(m["id"])]
@@ -601,6 +637,8 @@ def main():
 
     if extras:
         print(f"Passthrough extras: {' '.join(extras)}")
+
+    print(f"\nEquivalent non-interactive command:\n  {equivalent_command(args, explicit, selected, profile, extras)}")
 
     benchy = find_benchy(args.benchy)
     taken = set()
