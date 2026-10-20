@@ -69,6 +69,9 @@ coverage.xml
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# bench_models.py benchmark output
+results/
+
 # IDE specific files
 .idea/
 .vscode/
