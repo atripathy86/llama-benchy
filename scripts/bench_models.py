@@ -11,12 +11,12 @@ Pseudocode:
     candidates = models minus embedding/reranker        # generic, name-based filter
 
     selected   = --models <list> | --all | interactive numbered picker ('a', '1,3,5-8', 'q')
-    profile    = --profile | interactive menu           # smoke | sweep | throughput | full
+    profile    = --profile | interactive menu           # smoke | sweep | throughput | full | matrix
 
     apply CLI overrides: --pp --tg --depth --concurrency
     for each selected model:
         depths = [d for d in profile.depths
-                  if d + pp + tg + margin <= (max_input_tokens or unknown-cap)]
+                  if d + max(pp) + max(tg) + margin <= (max_input_tokens or unknown-cap)]
 
     print plan (models, resolved depths, contamination warning)
     if --dry-run: print each resolved command and exit
@@ -60,6 +60,27 @@ Profiles (all use --latency-mode generation and --runs/--warmup-runs as given):
                 throughput to reveal how the server saturates. Longest
                 runtime.
 
+    matrix      Cross-product matrix: pp 512/2048/8192 x tg 32/128 measured
+                at depths 0, 8K, 16K = 18 test shapes. Maps the full
+                prefill/decode/context surface in one run. Most expensive
+                profile: shapes x (runs + warmup) requests, and depth
+                capping reserves headroom for the largest pp + tg.
+
+Recommended workflow (narrow the model set as the shapes widen):
+
+    1. smoke      --all            fast triage: reachability/coherence for the
+                                   whole fleet; catches broken routes early
+    2. sweep      --all            core comparison: context degradation per model
+    3. throughput <top few>        fair fixed-output-length decode comparison
+    4. matrix     <top few>        full pp/tg/depth surface on finalists only
+    5. full       <finalist>       concurrency scaling / saturation check
+
+    Rerun a model solo whenever clean absolute numbers matter: models run
+    in true parallel share the server, so results can be contaminated.
+    For backends that emit one stream chunk after full processing, pp t/s
+    is an artifact - compare e2e_ttft instead, or add
+    --enable-prefix-caching; use --stream <model> to watch a suspect live.
+
 Examples:
   python3 scripts/bench_models.py --base-url http://localhost:8000/v1
   python3 scripts/bench_models.py --base-url http://localhost:8000/v1 --all --profile sweep
@@ -102,6 +123,10 @@ PROFILES = {
     "full": dict(
         pp=[2048], tg=[32], depth=[0, 4096, 8192, 16384, 32768], concurrency=[1, 4], exact_tg=False,
         desc="sweep depths + concurrency 1,4 (load scaling)",
+    ),
+    "matrix": dict(
+        pp=[512, 2048, 8192], tg=[32, 128], depth=[0, 8192, 16384], concurrency=[1], exact_tg=False,
+        desc="pp 512/2048/8192 x tg 32/128 @ depths 0/8K/16K (18 shapes, full surface)",
     ),
 }
 
@@ -542,14 +567,14 @@ def main():
         prof["depth"] = args.depth
     if args.concurrency:
         prof["concurrency"] = args.concurrency
-    if args.profile is None and profile in ("sweep", "full") and not args.enable_prefix_caching:
+    if args.profile is None and profile in ("sweep", "full") and not args.enable_prefix_caching and sys.stdin.isatty():
         args.enable_prefix_caching = ask_prefix_caching()
     if args.enable_prefix_caching and all(d == 0 for d in prof["depth"]):
         print("note: --enable-prefix-caching has no effect without depth > 0; ignoring")
         args.enable_prefix_caching = False
 
-    pp_val = prof["pp"][0]
-    tg_val = prof["tg"][0]
+    pp_val = max(prof["pp"])
+    tg_val = max(prof["tg"])
     cap_info = []
     for m in candidates:
         if m["id"] in selected:
