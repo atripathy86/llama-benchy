@@ -9,6 +9,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+
 
 def safe_filename(value: str) -> str:
     """Return a model name that is safe to use as part of a filename."""
@@ -41,7 +43,15 @@ def metric_points(
 
 
 def plot_model(model: str, benchmarks: list[dict[str, Any]], output_dir: Path) -> int:
-    import matplotlib.pyplot as plt
+    try:
+        import matplotlib.pyplot as plt
+    except ModuleNotFoundError as exc:
+        if exc.name != "matplotlib":
+            raise
+        raise RuntimeError(
+            "matplotlib is required for plotting; install the project dependencies "
+            "with `python -m pip install -e .`"
+        ) from exc
 
     prefix = output_dir / safe_filename(model)
     generated = 0
@@ -100,8 +110,12 @@ def plot_model(model: str, benchmarks: list[dict[str, Any]], output_dir: Path) -
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("summary", nargs="?", type=Path, default=Path("results/summary.json"))
-    parser.add_argument("-o", "--output-dir", type=Path, default=Path("results/plots"))
+    parser.add_argument(
+        "summary", nargs="?", type=Path, default=REPOSITORY_ROOT / "results/summary.json"
+    )
+    parser.add_argument(
+        "-o", "--output-dir", type=Path, default=REPOSITORY_ROOT / "results/plots"
+    )
     args = parser.parse_args()
 
     try:
@@ -115,15 +129,18 @@ def main() -> int:
     if not isinstance(models, list):
         parser.error("summary JSON must contain a models list")
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    generated = 0
-    for entry in models:
-        if entry.get("status") != "ok":
-            continue
-        report = entry.get("report") or {}
-        benchmarks = report.get("benchmarks") or []
-        if benchmarks:
-            generated += plot_model(entry.get("model", "model"), benchmarks, args.output_dir)
+    try:
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        generated = 0
+        for entry in models:
+            if entry.get("status") != "ok":
+                continue
+            report = entry.get("report") or {}
+            benchmarks = report.get("benchmarks") or []
+            if benchmarks:
+                generated += plot_model(entry.get("model", "model"), benchmarks, args.output_dir)
+    except RuntimeError as exc:
+        parser.error(str(exc))
 
     print(f"Generated {generated} graph(s) in {args.output_dir}")
     return 0

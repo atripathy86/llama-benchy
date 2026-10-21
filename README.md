@@ -186,10 +186,10 @@ Generally you don't need to disable prompt caching on the server, as a probabili
 
 ### Plotting combined results
 
-Install the optional plotting dependency and generate separate throughput and latency graphs for each successful model in `results/summary.json`:
+Generate separate throughput and latency graphs for each successful model in `results/summary.json`:
 
 ```bash
-uv pip install -e ".[plots]"
+uv pip install -e .
 python scripts/plot_summary.py
 ```
 
