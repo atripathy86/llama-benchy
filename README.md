@@ -184,6 +184,17 @@ Generally you don't need to disable prompt caching on the server, as a probabili
 -   `--no-results-on-fail`: Prevent saving/printing any results when error is experienced, turns on --exit-on-first-fail as well.
 -   `--extra-body`: Extra JSON fields to merge into benchmark chat completion requests. Accepts repeated or comma-separated `key=value` / `key:value` entries, e.g. `--extra-body min_tokens=1024,ignore_eos=true`.
 
+### Plotting combined results
+
+Install the optional plotting dependency and generate separate throughput and latency graphs for each successful model in `results/summary.json`:
+
+```bash
+uv pip install -e ".[plots]"
+python scripts/plot_summary.py
+```
+
+Graphs are written to `results/plots/`. An alternate summary file or output directory can be supplied with `python scripts/plot_summary.py SUMMARY.json --output-dir plots`.
+
 For fixed-output-length throughput benchmarks, prefer `--exact-tg` over manually passing `min_tokens` and `ignore_eos`:
 
 ```bash
