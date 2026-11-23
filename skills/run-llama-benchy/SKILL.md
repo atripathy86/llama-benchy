@@ -61,8 +61,10 @@ Typical run:
    model objects containing `id` and, when available, `root` and
    `max_input_tokens`. If multiple models are returned, show them in a
    multi-select form, including **All models** and **Other** for IDs not listed;
-   never assume the first model. Explain that a
-   listed model may still need loading or may not support chat completions.
+   never assume the first model. For the multi-select field, encode each option
+   with `items.anyOf` entries containing `const` and `title`, and provide a
+   separate free-text field for an **Other** model ID. Explain that a listed
+   model may still need loading or may not support chat completions.
    If discovery fails, report the error and ask for a usable endpoint,
    authentication, or explicit model IDs; do not invent models.
 4. If authentication is required, explain how to provide it through an
@@ -121,7 +123,11 @@ Typical run:
 
    Every profile uses 1 warmup run and generation latency mode. Explain that
    depths may be capped and that context depth + prompt + generation + chat
-   template headroom must fit the server's context limit.
+   template headroom must fit the server's context limit. If discovery omits
+   `max_input_tokens`, do not infer an unlimited context: the single-model CLI
+   does not cap requested depths, so warn that oversized cases may fail. Never
+   silently remove requested depths; the multi-model runner's cap behavior is
+   described below.
 
    Ask **Use these settings (recommended)** or **Adjust settings**, defaulting
    to use as-is. If adjustment is selected, present labeled structured choices
@@ -138,16 +144,19 @@ Typical run:
    - Exact output length: off (recommended unless the server supports
      `min_tokens` and `ignore_eos`) or on.
    - Prefix-caching measurement: off (recommended) or on for nonzero depths.
-   - Results: console only (recommended for a quick test), or save as JSON,
-     Markdown, or CSV. For saved results suggest a new, non-existing path and
-     allow the user to change it.
+   - Results: save JSON (recommended and default), or choose Markdown, CSV, or
+     console only. Generate a fresh, non-existing JSON path under `results`
+     for each run and let the user change it. For the single-model CLI, create
+     the parent directory if it does not exist and verify the target file is
+     absent; the CLI does not create parent directories and may overwrite files.
 
    Defaults for options absent from a profile are exact output off, prefix
-   caching off, and console only. If the selected runner always saves reports,
-   explain this and ask the user to approve a fresh output directory instead of
-   promising console-only output. Validate custom numbers and context limits;
-   never silently discard values. Explain that parameter lists form a
-   cross-product, then confirm the resolved settings and runtime implications.
+   caching off, and a JSON report saved under `results`. Use a unique timestamp
+   in the filename and verify the path does not already exist. For the
+   multi-model runner, use a fresh, unique `--output-dir` under `results`.
+   Validate custom numbers and context limits; never silently discard values.
+   Explain that parameter lists form a cross-product, then confirm the resolved
+   settings, report path, and runtime implications.
    Offer **Run now** or **Only prepare commands** if not already specified.
 
 ## Tokenizer and corpus
@@ -162,13 +171,16 @@ and ask for the correct tokenizer when accuracy matters. Do not claim a
 successful result has exact token counts when a fallback was used.
 
 The first run may download dependencies, tokenizer files and a Project
-Gutenberg corpus. If the corpus URL fails, report the error and ask for an
-accessible plain-text HTTP(S) URL via `--book-url`; for example, the same book
-is available at
+Gutenberg corpus. Always pass `--book-url` explicitly. Use this checked
+plain-text Sherlock Holmes mirror by default:
 `https://mirror.csclub.uwaterloo.ca/gutenberg/1/6/6/1661/1661-0.txt`.
-Check that the mirror is reachable before offering it; local `file://` URLs
-are not supported. Do not use unrelated HTML as a substitute without agreement.
-Keep coherence testing enabled unless the user chooses to skip it.
+Before starting the benchmark, preflight the selected URL with a bounded HTTP
+request and confirm it returns a successful 2xx response (including 206) and
+plain text. If it is unavailable, do not start the benchmark or silently switch
+sources: report the status and ask the user to approve another accessible
+plain-text HTTP(S) URL. Local `file://` URLs are not supported. Do not use
+unrelated HTML as a substitute without agreement. Keep coherence testing
+enabled unless the user chooses to skip it.
 
 An unauthenticated Hugging Face warning alone is not a failure; public files
 may still download. Authentication can help with rate limits or gated models.
@@ -223,11 +235,12 @@ selected or behavior-affecting option: endpoint, API key source, model and
 served model if different, tokenizer if selected, `--pp`, `--tg`, `--depth`,
 `--runs`, `--warmup-runs`, `--concurrency`, `--latency-mode`, `--book-url`,
 format, and output path. Spell out defaults used by the run, including
-`--api-key EMPTY` when unauthenticated and `--format md` when not saving JSON
-or CSV. State false boolean settings (for example coherence check enabled,
-prefix caching disabled) next to the command rather than suggesting their
-flags were passed. Add selected flags such as `--exact-tg` or
-`--enable-prefix-caching`; do not include unrelated options.
+`--api-key EMPTY` when unauthenticated. By default, save JSON and include
+`--format json --save-result <fresh-path>`; use another format or console-only
+output only if the user selects it. State false boolean settings (for example
+coherence check enabled, prefix caching disabled) next to the command rather
+than suggesting their flags were passed. Add selected flags such as
+`--exact-tg` or `--enable-prefix-caching`; do not include unrelated options.
 
 If the user approved changing only the corpus URL, keep every other argument
 the same and show the approved URL as the `--book-url` value. Never silently
@@ -244,24 +257,23 @@ invocation is reproducible.
 For one model, a small starting point is:
 
 ```text
-uv run llama-benchy --base-url <base-url> --api-key EMPTY --model <api-model-id> --pp 512 --tg 32 --depth 0 --concurrency 1 --runs 1 --warmup-runs 1 --latency-mode generation --adapt-prompt --format md --book-url https://www.gutenberg.org/files/1661/1661-0.txt
+uv run llama-benchy --base-url <base-url> --api-key EMPTY --model <api-model-id> --pp 512 --tg 32 --depth 0 --concurrency 1 --runs 1 --warmup-runs 1 --latency-mode generation --adapt-prompt --format json --save-result results/<model-slug>_smoke_<timestamp>.json --book-url https://mirror.csclub.uwaterloo.ca/gutenberg/1/6/6/1661/1661-0.txt
 ```
 
 This example uses a checkout; substitute the selected `uvx` prefix when using
 the release or upstream main branch.
 
-Add a matching `--tokenizer` or `--served-model-name` when needed. For JSON
-output, include `--format json --save-result <path>`; use a distinct path per
-model and avoid overwriting existing results. If the user wants commands only,
-quote model IDs and paths for their shell, and provide PowerShell syntax on
-Windows or POSIX shell syntax on macOS/Linux. Use single-line commands where
-practical. Explain prerequisites and placeholders.
+Add a matching `--tokenizer` or `--served-model-name` when needed. Generate a
+fresh JSON path per model and avoid overwriting existing results. If the user
+wants commands only, quote model IDs and paths for their shell, and provide
+PowerShell syntax on Windows or POSIX shell syntax on macOS/Linux. Use
+single-line commands where practical. Explain prerequisites and placeholders.
 
 For multiple models, the branch's existing runner discovers models and can
 produce JSON reports, logs, and a combined summary:
 
 ```text
-uv run python scripts/bench_models.py --base-url <base-url> --models <id1,id2> --profile smoke --runs 1 --yes
+uv run python scripts/bench_models.py --base-url <base-url> --models <id1,id2> --profile smoke --runs 1 --output-dir results/<fresh-run-dir> --yes
 ```
 
 The runner's `smoke` profile defaults to pp 2048, not the skill's recommended
@@ -285,8 +297,8 @@ them. Override profiles with `--pp`, `--tg`, `--depth`, or `--concurrency`.
 The runner limits depths using reported `max_input_tokens` or `--unknown-cap`
 (default 32768), with `--margin` (default 512). Its fallback to depth 0 does
 not guarantee the remaining prompt fits: check context limits independently.
-The runner writes under `results` by default; choose a fresh `--output-dir` to
-avoid overwriting earlier reports and logs.
+The runner writes under `results` by default; always pass a fresh, unique
+`--output-dir` under `results` to avoid overwriting earlier reports and logs.
 
 `--dry-run` on the runner discovers models and prints resolved commands without
 starting benchmarks, but prints API keys in those commands, including keys
@@ -299,10 +311,24 @@ local process visibility risk.
 ## Verify and report
 
 For actual runs, monitor until completion; report failures and inspect logs
-rather than claiming success from launch alone. Verify exit status and, when
-requested, the output files and per-model status. The multi-model runner writes
-`summary.md`, `summary.json`, per-model reports, and `logs/` in its output
-directory. Report selected models, benchmark settings, relevant metrics and
-output locations, including any tokenizer fallback, skipped tests, dropped
-depths, or parallel contention. If a test fails, surface the error and next
-step; do not silently change the corpus, tokenizer, or coherence settings.
+rather than claiming success from launch alone. Verify exit status and the
+saved JSON file exists and parses; also verify per-model status for runner
+results. The multi-model runner writes `summary.md`, `summary.json`, per-model
+reports, and `logs/` in its output directory.
+
+End every run with a concise recap that includes:
+
+- The exact llama-benchy CLI command(s) that ran. For a runner invocation,
+  include the runner command and resolved CLI command(s) for each model.
+  Redact secrets; do not imply a command ran if it was only prepared.
+- The outcome and relevant results: selected models, benchmark settings,
+  useful metrics, failures or skipped cases, and caveats such as tokenizer
+  fallback, usage-token fallback, dropped depths, or parallel contention.
+- The result files and their locations. Link to each report and summary when
+  workspace file links are supported, and identify the output directory for
+  logs. If a run failed before producing results, say no result file was
+  created and give the failure and next step.
+
+For command-only requests, finish with the prepared command(s) and expected
+output path(s), clearly stating that no benchmark ran and no result files were
+created. Do not silently change the corpus, tokenizer, or coherence settings.
