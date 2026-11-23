@@ -2,6 +2,7 @@
 .venv/
 venv/
 env/
+.env
 
 # Copilot instructions
 .github/copilot-instructions.md

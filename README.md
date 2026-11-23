@@ -109,6 +109,24 @@ Current version from the main branch:
 uv pip install git+https://github.com/eugr/llama-benchy --system
 ```
 
+### Install the agent skill
+
+The [run-llama-benchy skill](skills/run-llama-benchy/SKILL.md) discovers models
+and helps run benchmarks or create commands. Install it with Node.js 22.20+
+after the `bench-models` branch is published:
+
+```bash
+npx skills add https://github.com/atripathy86/llama-benchy/tree/bench-models/skills/run-llama-benchy
+```
+
+Select your agent when prompted; add `-g` for a user-wide install. For local,
+unpublished changes, use the absolute path to `skills/run-llama-benchy` instead
+of the URL. The skill can guide or perform llama-benchy setup with `uv`.
+
+Ask your agent: “Use run-llama-benchy to benchmark \<endpoint\>” or ask it to
+generate a command instead. Copilot can also discover the skill directly when
+this repository is open.
+
 ## Usage
 
 After installation, you can run the tool directly:
