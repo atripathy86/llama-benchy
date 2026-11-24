@@ -45,14 +45,14 @@ Typical run:
    project environment:
 
    ```text
-   uv run python skills/run-llama-benchy/scripts/discover_models.py --base-url "<endpoint>" --format json
+   uv run python .agents/skills/run-llama-benchy/scripts/discover_models.py --base-url "<endpoint>" --format json
    ```
 
    On Windows PowerShell, use
-   `uv run python skills\run-llama-benchy\scripts\discover_models.py --base-url "<endpoint>" --format json`.
+   `uv run python .agents\skills\run-llama-benchy\scripts\discover_models.py --base-url "<endpoint>" --format json`.
    When installed elsewhere with `npx skills add`, use the installed skill's
    `scripts/discover_models.py` path instead of assuming it is under the
-   checkout's `skills/` directory, but still run it with
+   checkout's `.agents/skills/` directory, but still run it with
    `uv run --project <llama-benchy-checkout> python <skill-script-path>` so it
    uses the checkout's environment. If no checkout exists yet, set it up before
    endpoint discovery.

@@ -9,7 +9,14 @@ from pathlib import Path
 import pytest
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "skills" / "run-llama-benchy" / "scripts" / "discover_models.py"
+SCRIPT = (
+    Path(__file__).resolve().parents[1]
+    / ".agents"
+    / "skills"
+    / "run-llama-benchy"
+    / "scripts"
+    / "discover_models.py"
+)
 
 
 @pytest.fixture

@@ -111,23 +111,25 @@ uv pip install git+https://github.com/eugr/llama-benchy --system
 
 ### Install the agent skill
 
-The [run-llama-benchy skill](skills/run-llama-benchy/SKILL.md) discovers models
+The [run-llama-benchy skill](.agents/skills/run-llama-benchy/SKILL.md) discovers models
 and helps run benchmarks or create commands. Install it with Node.js 22.20+
 after the `bench-models` branch is published:
 
 ```bash
-npx skills add https://github.com/atripathy86/llama-benchy/tree/bench-models/skills/run-llama-benchy
+npx skills add https://github.com/atripathy86/llama-benchy/tree/bench-models/.agents/skills/run-llama-benchy
 ```
 
 Select your agent when prompted; add `-g` for a user-wide install. For local,
-unpublished changes, use the absolute path to `skills/run-llama-benchy` instead
-of the URL. The skill can guide or perform llama-benchy setup with `uv`.
+unpublished changes, use the absolute path to
+`.agents/skills/run-llama-benchy` instead of the URL. The skill can guide or
+perform llama-benchy setup with `uv`.
 
 Ask your agent: “Use run-llama-benchy to benchmark \<endpoint\>” or ask it to
-generate a command instead. Copilot can also discover the skill directly when
-this repository is open.
+generate a command instead. Compatible agents, including GitHub Copilot, can
+also discover the skill directly from `.agents/skills` when this repository is
+open.
 
-The companion [visualize-llama-benchy skill](skills/visualize-llama-benchy/SKILL.md)
+The companion [visualize-llama-benchy skill](.agents/skills/visualize-llama-benchy/SKILL.md)
 plots saved JSON reports without rerunning benchmarks. Copilot can discover it
 when this repository is open; it can also be installed from the skill directory.
 The plotting script still requires a checkout of this repository.
