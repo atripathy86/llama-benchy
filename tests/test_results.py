@@ -1,4 +1,5 @@
 import pytest
+import json
 
 from llama_benchy.client import RequestResult
 from llama_benchy.results import BenchmarkResults
@@ -67,3 +68,25 @@ def test_block_streaming_excludes_first_observed_block_from_decode_throughput():
     run = results.runs[0]
     assert run.tg_throughput is not None
     assert run.tg_throughput.mean == pytest.approx(256.0)
+
+
+def test_both_format_writes_json_and_markdown_siblings(tmp_path):
+    results = BenchmarkResults()
+    result_path = tmp_path / "report.json"
+
+    results.save_report(str(result_path), "both")
+
+    assert json.loads(result_path.read_text()) == {"benchmarks": []}
+    assert result_path.with_suffix(".md").read_text().startswith(
+        "No results collected."
+    )
+
+
+def test_explicit_json_format_writes_only_json(tmp_path):
+    results = BenchmarkResults()
+    result_path = tmp_path / "report.json"
+
+    results.save_report(str(result_path), "json")
+
+    assert result_path.exists()
+    assert not result_path.with_suffix(".md").exists()

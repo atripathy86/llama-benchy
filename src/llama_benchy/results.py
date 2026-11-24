@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 import json
 import csv
 import sys
+from pathlib import Path
 
 from .client import RequestResult
 
@@ -472,6 +473,19 @@ class BenchmarkResults:
         return tabulate(data, headers=headers, tablefmt="pipe", colalign=("left", "right", "right", "right", "right", "right", "right", "right", "right") if concurrency > 1 else ("left", "right", "right", "right", "right", "right", "right"))
 
     def save_report(self, filename: Optional[str], format: str, concurrency: int = 1):
+        if format == "both":
+            if filename:
+                base_path = Path(filename)
+                json_path = base_path.with_suffix(".json")
+                md_path = base_path.with_suffix(".md")
+                self.save_report(str(json_path), "json", concurrency)
+                self.save_report(str(md_path), "md", concurrency)
+                return
+
+            self.save_report(None, "json", concurrency)
+            self.save_report(None, "md", concurrency)
+            return
+
         msg = ""
         if filename:
             msg += f"Saving results to {filename} in {format.upper()} format...\n"

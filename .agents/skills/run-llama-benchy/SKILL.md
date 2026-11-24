@@ -30,11 +30,22 @@ Typical run:
 
 ## Gather requirements
 
-Before asking the user for endpoint details, inspect the current checkout for
-`.env` without printing it. If it exists, interpret the keys described in
-`.env.example`; otherwise ask the user to save or attach a `.env` in that exact
-simple `KEY=value` format. Never ask them to paste a secret into chat, and never
-print or echo secret values:
+Before asking any benchmark configuration questions, inspect the current
+checkout for `.env` and parse it safely without printing its contents. Treat
+non-empty values as the user's configured intent: `API_BASE` selects the
+endpoint, `LLAMA_BENCHY_MODELS` selects the model subset, and
+`LLAMA_BENCHY_PROFILE` selects the profile(s). Check only the presence of
+credential keys such as `API_KEY` and `HF_TOKEN`; never print, echo, summarize,
+or put their values in chat, commands, logs, or files.
+
+If `.env` exists, do not ask again for a value it already configures unless the
+user explicitly wants to override it or the value fails validation. Precedence
+is: this request's explicit instruction, explicit CLI argument, existing shell
+environment value, then non-empty `.env` value. Empty `.env` values do not
+override any existing environment or default. If `.env` does not exist, ask the
+user to save or attach one in this exact simple `KEY=value` format only when
+environment-derived defaults are needed; otherwise continue with explicit
+arguments. Never ask them to paste a secret into chat.
 
 ```dotenv
 API_BASE=https://inference.example
@@ -71,14 +82,20 @@ token, or other secret into chat.
 3. If an endpoint is given, query it live before model selection using the
    cross-platform Python script in this skill. Run it with `uv run` from the
    llama-benchy checkout root so discovery and benchmarking use the same
-   project environment:
+   project environment. First resolve the endpoint from the current request,
+   shell environment, or `.env`; do not ask for it if `API_BASE` is configured.
+   If `API_KEY` is configured in `.env`, load that file into the `uv` process and
+   name `API_KEY` through `--api-key-env`; do not resolve or display its value:
 
    ```text
-   uv run python .agents/skills/run-llama-benchy/scripts/discover_models.py --base-url "<endpoint>" --format json
+   uv run --env-file .env python .agents/skills/run-llama-benchy/scripts/discover_models.py --base-url "<resolved-endpoint>" --api-key-env API_KEY --format json
    ```
 
    On Windows PowerShell, use
-   `uv run python .agents\skills\run-llama-benchy\scripts\discover_models.py --base-url "<endpoint>" --format json`.
+   the equivalent `.agents\skills\run-llama-benchy\scripts\discover_models.py`
+   path. Omit `--api-key-env API_KEY` only when no endpoint credential is
+   configured. For an existing shell credential, name its environment variable
+   instead of copying its value.
    When installed elsewhere with `npx skills add`, use the installed skill's
    `scripts/discover_models.py` path instead of assuming it is under the
    checkout's `.agents/skills/` directory, but still run it with
@@ -94,7 +111,11 @@ token, or other secret into chat.
    with `items.anyOf` entries containing `const` and `title`, and provide a
    separate free-text field for an **Other** model ID. Explain that a listed
    model may still need loading or may not support chat completions.
-   If discovery fails, report the error and ask for a usable endpoint,
+   If `LLAMA_BENCHY_MODELS` is non-empty, validate that configured subset against
+   the discovered endpoint models and use it without asking the model-selection
+   question again. If only some configured IDs are present, report the mismatch
+   and ask for a correction rather than silently broadening the selection. If
+   discovery fails, report the error and ask for a usable endpoint,
    authentication, or explicit model IDs; do not invent models.
 4. If authentication is required, explain that `API_KEY` in `.env` is
    supported and that the file must remain untracked; alternatively explain
@@ -108,8 +129,11 @@ token, or other secret into chat.
    HTTP redirects. The single-model CLI requires `--api-key`; pass a shell variable
    reference rather than the literal value, and warn that process arguments
    may be visible locally. Do not send credentials to an untrusted endpoint.
-5. Present the following profiles and a single-select profile selector with
-   **Smoke test** selected by default. Keep each choice as a separate
+5. If `LLAMA_BENCHY_PROFILE` is non-empty, use those configured profiles in
+   order and retain it as the user's explicit intent; do not prompt for profile
+   selection again. Otherwise present the following profiles and a single-select
+   profile selector with **Smoke test** selected by default. Keep each choice as a
+   separate
    block with one setting per line; do not compress settings into slash-
    separated text or a wide table. Let the user accept a profile unchanged or
    choose to adjust it; do not ask users to invent parameters:
@@ -160,11 +184,14 @@ token, or other secret into chat.
    silently remove requested depths; the multi-model runner's cap behavior is
    described below.
 
-   Ask **Use these settings (recommended)** or **Adjust settings**, defaulting
-   to use as-is. If adjustment is selected, present labeled structured choices
-   in a form, preselected to the chosen profile's values (or the user's
-   explicit values). Offer an `Other` free-text option for each numeric field
-   when supported, rather than a single textbox for the whole configuration:
+   If profile settings came from `LLAMA_BENCHY_PROFILE` and the user did not
+   ask to adjust them, proceed with that profile's defaults without another
+   settings confirmation. Otherwise ask **Use these settings (recommended)**
+   or **Adjust settings**, defaulting to use as-is. If adjustment is selected,
+   present labeled structured choices in a form, preselected to the chosen
+   profile's values (or the user's explicit values). Offer an `Other` free-text
+   option for each numeric field when supported, rather than a single textbox
+   for the whole configuration:
 
    - Prompt lengths: 512, 2048, 8192; multi-select for multiple values.
    - Generation lengths: 32, 128, 256; multi-select for multiple values.
@@ -175,11 +202,13 @@ token, or other secret into chat.
    - Exact output length: off (recommended unless the server supports
      `min_tokens` and `ignore_eos`) or on.
    - Prefix-caching measurement: off (recommended) or on for nonzero depths.
-   - Results: save JSON (recommended and default), or choose Markdown, CSV, or
-     console only. Generate a fresh, non-existing JSON path under `results`
-     for each run and let the user change it. For the single-model CLI, create
-     the parent directory if it does not exist and verify the target file is
-     absent; the CLI does not create parent directories and may overwrite files.
+   - Results: save both JSON and Markdown (recommended and default), or choose
+     JSON only, Markdown only, CSV only, or console only. Generate a fresh,
+     non-existing path under `results` for each run and let the user change it.
+     For saved single-model results, pass a `.json` path: the default
+     `--format both` writes that JSON file and a sibling `.md` file. Verify
+     neither target exists. Create the parent directory if needed; the CLI does
+     not create parent directories and may overwrite files.
 
    Artifact names must be explicit and use:
    `model-endpoint-test-type-UTCtimestamp.extension` (for example
@@ -192,9 +221,10 @@ token, or other secret into chat.
    names use `summary-endpoint-test-type-UTCtimestamp.extension`.
 
    Defaults for options absent from a profile are exact output off, prefix
-   caching off, and a JSON report saved under `results`. Use a unique timestamp
-   in the filename and verify the path does not already exist. For the
-   multi-model runner, use a fresh, unique `--output-dir` under `results`.
+   caching off, and sibling JSON and Markdown reports saved under `results`.
+   Use a unique timestamp in the filename and verify both output paths do not
+   already exist. For the multi-model runner, which already creates JSON and
+   Markdown reports, use a fresh, unique `--output-dir` under `results`.
    Validate custom numbers and context limits; never silently discard values.
    Explain that parameter lists form a cross-product, then confirm the resolved
    settings, report path, and runtime implications.
@@ -296,9 +326,10 @@ selected or behavior-affecting option: endpoint, API key source, model and
 served model if different, tokenizer if selected, `--pp`, `--tg`, `--depth`,
 `--runs`, `--warmup-runs`, `--concurrency`, `--latency-mode`, `--book-url`,
 format, and output path. Spell out defaults used by the run, including
-`--api-key EMPTY` when unauthenticated. By default, save JSON and include
-`--format json --save-result <fresh-path>`; use another format or console-only
-output only if the user selects it. State false boolean settings (for example
+`--api-key EMPTY` when unauthenticated. By default, save both JSON and Markdown and include
+`--format both --save-result <fresh.json-path>`; use `--format json`,
+`--format md`, `--format csv`, or console-only output only if the user selects
+it. Console-only means no `--save-result` option. State false boolean settings (for example
 coherence check enabled, prefix caching disabled) next to the command rather
 than suggesting their flags were passed. Add selected flags such as
 `--exact-tg` or `--enable-prefix-caching`; do not include unrelated options.
@@ -319,7 +350,7 @@ invocation is reproducible.
 For one model, a small starting point is:
 
 ```text
-uv run llama-benchy --env-file .env --model <api-model-id> --pp 512 --tg 32 --depth 0 --concurrency 1 --runs 1 --warmup-runs 1 --latency-mode generation --adapt-prompt --format json --save-result results/<model-slug>-<endpoint-slug>-smoke-<UTCtimestamp>.json --book-url https://mirror.csclub.uwaterloo.ca/gutenberg/1/6/6/1661/1661-0.txt
+uv run llama-benchy --env-file .env --model <api-model-id> --pp 512 --tg 32 --depth 0 --concurrency 1 --runs 1 --warmup-runs 1 --latency-mode generation --adapt-prompt --format both --save-result results/<model-slug>-<endpoint-slug>-smoke-<UTCtimestamp>.json --book-url https://mirror.csclub.uwaterloo.ca/gutenberg/1/6/6/1661/1661-0.txt
 ```
 
 This example uses a checkout; substitute the selected `uvx` prefix when using
@@ -350,7 +381,9 @@ endpoint/client bases in one invocation.
 Benchmark different endpoints with separate runner invocations and separate
 endpoint-qualified output directories.
 
-The runner's `smoke` profile defaults to pp 2048, not the skill's recommended
+The runner always produces per-model JSON plus generated Markdown companions,
+regardless of the single-model CLI's `--format` default. The runner's `smoke`
+profile defaults to pp 2048, not the skill's recommended
 pp 512: add `--pp 512` when using the skill's smoke settings. Pass all other
 overrides required to match the user's confirmed choices.
 

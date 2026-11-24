@@ -140,3 +140,27 @@ def test_default_book_url_uses_waterloo_mirror(monkeypatch, tmp_path):
         "https://mirror.csclub.uwaterloo.ca/gutenberg/"
         "1/6/6/1661/1661-0.txt"
     )
+    assert config.result_format == "both"
+
+
+def test_explicit_result_format_remains_single_format(monkeypatch, tmp_path):
+    monkeypatch.setattr(os, "environ", os.environ.copy())
+    env_file = tmp_path / ".env"
+    env_file.write_text("API_BASE=https://inference.example\n")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "llama-benchy",
+            "--env-file",
+            str(env_file),
+            "--model",
+            "model-a",
+            "--format",
+            "csv",
+        ],
+    )
+
+    config = BenchmarkConfig.from_args()
+
+    assert config.result_format == "csv"

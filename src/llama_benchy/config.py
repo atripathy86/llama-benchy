@@ -58,7 +58,9 @@ class BenchmarkConfig(BaseModel):
     )
     concurrency_levels: List[int] = Field(..., description="List of concurrency levels")
     save_result: Optional[str] = Field(None, description="File to save results to")
-    result_format: str = Field("md", description="Output format (md, json, csv)")
+    result_format: str = Field(
+        "both", description="Output format (both, md, json, csv)"
+    )
     save_total_throughput_timeseries: bool = Field(
         False,
         description="Save calculated TOTAL throughput for each 1 second window inside peak throughput calculation during the run.",
@@ -405,9 +407,12 @@ class BenchmarkConfig(BaseModel):
         parser.add_argument(
             "--format",
             type=str,
-            default="md",
-            choices=["md", "json", "csv"],
-            help="Output format",
+            default="both",
+            choices=["both", "md", "json", "csv"],
+            help=(
+                "Output format (default: both). With --save-result, 'both' "
+                "writes sibling .json and .md files."
+            ),
         )
         parser.add_argument(
             "--save-total-throughput-timeseries",

@@ -203,7 +203,7 @@ Generally you don't need to disable prompt caching on the server, as a probabili
 -   `--enable-prefix-caching`: Enable prefix caching performance measurement. When enabled (and depth > 0), it performs a two-step benchmark: first loading the context (reported as `ctx_pp`), then running the prompt with the cached context.
 -   `--concurrency`: List of concurrency levels (number of concurrent requests per test) (Default: [1]).
 -   `--save-result`: File to save results to.
--   `--format`: Output format: 'md', 'json', 'csv' (Default: 'md').
+-   `--format`: Output format: `both`, `md`, `json`, or `csv` (Default: `both`). With `--save-result`, `both` writes sibling `.json` and `.md` reports from the provided path. Omit `--save-result` to print the selected format to the console.
 -   `--save-total-throughput-timeseries`: Save calculated TOTAL throughput for each 1 second window inside peak throughput calculation during the run (default: off).
 -   `--save-all-throughput-timeseries`: Save calculated throughput timeseries for EACH individual request (default: off).
 -   `--exit-on-first-fail`: Stop execution on first failed test and exit with non-zero status.
