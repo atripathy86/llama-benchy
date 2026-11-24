@@ -8,6 +8,8 @@ description: Visualize saved llama-benchy JSON benchmark reports or multi-model 
 Help the user visualize completed llama-benchy experiments. Use existing data;
 do not contact an endpoint or rerun a benchmark. Respect a request for commands
 only: do not install dependencies or generate files in that case.
+This skill may be invoked by `run-llama-benchy` after a completed run; in that
+case, treat the exact JSON path supplied by that skill as the selected report.
 
 ## Find the results and choose an output
 
@@ -36,8 +38,10 @@ only: do not install dependencies or generate files in that case.
    individual reports and separate output directories rather than allowing
    graphs to overwrite each other. Preserve the source report's explicit
    `model-endpoint-test-type-UTCtimestamp` identity in visualization labels and
-   output directory naming when available. Do not load `.env` or contact an
-   endpoint for visualization; endpoint provenance comes from the saved JSON.
+   output directory naming when available. Interpret `endpoint` as a short DNS
+   label or full IP address; report filenames intentionally omit the API path.
+   Do not load `.env` or contact an endpoint for visualization; the exact base
+   URL and endpoint provenance come from the saved JSON.
 
 ## Generate graphs
 

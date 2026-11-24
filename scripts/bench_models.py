@@ -96,6 +96,7 @@ Summary:  <output-dir>/summary-<endpoint>-<type>-<UTCtimestamp>.{json,md}
 
 import argparse
 import copy
+import ipaddress
 import json
 import os
 import re
@@ -356,7 +357,14 @@ def safe_name(model_id, taken):
 
 def endpoint_name(base_url):
     parsed = urlsplit(base_url)
-    endpoint = parsed.netloc or parsed.path
+    hostname = parsed.hostname
+    if not hostname:
+        hostname = re.split(r"[/:]", parsed.path.lstrip("/"), maxsplit=1)[0]
+    try:
+        ipaddress.ip_address(hostname)
+        endpoint = hostname
+    except ValueError:
+        endpoint = hostname.split(".", maxsplit=1)[0]
     return re.sub(r"[^A-Za-z0-9._-]+", "-", endpoint).strip("-") or "endpoint"
 
 

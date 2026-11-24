@@ -63,9 +63,20 @@ def test_summary_uses_endpoint_profile_and_timestamp_name(tmp_path):
     )
 
     assert markdown_path.name == (
-        "summary-localhost-8000-smoke-20261124T183914Z.md"
+        "summary-localhost-smoke-20261124T183914Z.md"
     )
     assert markdown_path.with_suffix(".json").exists()
+
+
+def test_endpoint_name_uses_short_fqdn_label():
+    assert (
+        bench_models.endpoint_name("https://ai11.labs.hpecorp.net/v1")
+        == "ai11"
+    )
+
+
+def test_endpoint_name_preserves_ip_address():
+    assert bench_models.endpoint_name("http://192.0.2.10:8000/v1") == "192.0.2.10"
 
 
 def test_parse_profiles_accepts_comma_separated_unique_values():

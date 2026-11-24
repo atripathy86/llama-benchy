@@ -240,7 +240,10 @@ endpoint/client bases in one
 invocation; benchmark another endpoint with a separate `.env` or `--env-file`.
 Reports follow
 `model-endpoint-test-type-UTCtimestamp.{json,md}` and runner summaries follow
-`summary-endpoint-test-type-UTCtimestamp.{json,md}`.
+`summary-endpoint-test-type-UTCtimestamp.{json,md}`. The filename endpoint is
+the first DNS label of an FQDN (for example, `ai11` for
+`ai11.labs.hpecorp.net`) or the full IP address. It omits the API path and
+port; the exact endpoint, including `/v1`, is stored in the JSON `base_url`.
 
 ### Plotting combined results
 

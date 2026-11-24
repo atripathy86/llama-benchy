@@ -182,10 +182,13 @@ token, or other secret into chat.
 
    Artifact names must be explicit and use:
    `model-endpoint-test-type-UTCtimestamp.extension` (for example
-   `llama-3-localhost-8000-v1-smoke-20261124T183914Z.json`). Use a sanitized
-   endpoint host/port/path and the selected profile or benchmark type. Apply the
-   same convention to Markdown companions and logs. Multi-model summary names
-   use `summary-endpoint-test-type-UTCtimestamp.extension`.
+   `llama-3-localhost-smoke-20261124T183914Z.json` or
+   `GLM-5.3-Flash-ai11-smoke-20261124T191008Z.json`). Use the first DNS label of
+   an FQDN for the endpoint, but preserve an IP address as written. Do not
+   include the port, scheme, domain suffix, or API version path in the filename;
+   the exact normalized base URL including `/v1` belongs in report JSON. Apply
+   the same convention to Markdown companions and logs. Multi-model summary
+   names use `summary-endpoint-test-type-UTCtimestamp.extension`.
 
    Defaults for options absent from a profile are exact output off, prefix
    caching off, and a JSON report saved under `results`. Use a unique timestamp
@@ -311,7 +314,7 @@ For multiple models, the branch's existing runner discovers models and can
 produce JSON reports, logs, and a combined summary:
 
 ```text
-uv run python scripts/bench_models.py --env-file .env --models <id1,id2> --profile smoke --runs 1 --output-dir results/<endpoint-slug>-smoke-<UTCtimestamp> --yes
+uv run python scripts/bench_models.py --env-file .env --models <id1,id2> --profile smoke --runs 1 --output-dir results/<endpoint-short-name>-smoke-<UTCtimestamp> --yes
 ```
 
 If `LLAMA_BENCHY_MODELS` contains the confirmed model subset, omit `--models`;
@@ -380,7 +383,50 @@ End every run with a concise recap that includes:
   workspace file links are supported, and identify the output directory for
   logs. If a run failed before producing results, say no result file was
   created and give the failure and next step.
+- A short result interpretation: what the completed shape measured, any
+  notable throughput/latency behavior, and whether the result is suitable for
+  isolated comparison. Do not over-interpret a single run or parallel-model
+  run.
+
+Then recommend 2-4 reasonable next tests derived from what actually ran. Do not
+offer the full matrix indiscriminately. Present recommendations as a structured
+multi-select or numbered choices with one-line rationale, estimated relative
+cost, and the CLI/profile change required. Use these protocols as a starting
+point and adapt choices to model context limits, server capabilities, and the
+user's goal:
+
+- **After smoke**: run `sweep` to measure context degradation; run
+  `throughput` for stable fixed-length decode if `min_tokens` and `ignore_eos`
+  are supported; or repeat the smoke test for a baseline/variance check.
+- **After sweep**: run `full` or explicit `--concurrency 1 4` to test load
+  scaling; narrow a promising model for isolated sequential runs; or add
+  `--enable-prefix-caching` for nonzero-depth cache behavior.
+- **After throughput**: run `sweep` to add prefill/context sensitivity; run
+  selected concurrency levels to find saturation; or use different generation
+  lengths to locate short- versus long-output behavior.
+- **After full/load scaling**: repeat the strongest operating points in
+  isolation for clean absolute numbers; vary prompt length or generation length
+  if the bottleneck is unclear; or run the matrix only for finalists.
+- **After matrix**: rerun the best/worst or unexpected shapes with more measured
+  runs; test concurrency on the most relevant shape; or run fixed-length
+  throughput on finalists.
+- **After parallel multi-model runs**: offer sequential single-model reruns for
+  fair comparisons, emphasizing that simultaneous models share server
+  resources.
+- **After failures, skipped depths, tokenizer fallback, or usage-token
+  fallback**: prioritize correcting tokenizer/authentication/context settings
+  or rerunning the failed shape before widening the benchmark.
+
+Always offer **Plot these results** after a successful JSON report or summary.
+If the user accepts, invoke the `visualize-llama-benchy` skill rather than
+duplicating its visualization procedure. Pass the exact saved JSON path(s) and
+preserve the run skill's endpoint/profile/time naming context. Plotting uses
+saved data only and must not rerun the benchmark or contact the endpoint.
+Also offer **Stop here** so the user is not forced into another run. Before a
+new benchmark, confirm the selected follow-up and show the new exact command.
 
 For command-only requests, finish with the prepared command(s) and expected
 output path(s), clearly stating that no benchmark ran and no result files were
-created. Do not silently change the corpus, tokenizer, or coherence settings.
+created. Still suggest the most relevant 2-4 follow-up tests, but do not plot
+or call the visualization skill because no result exists. Do not silently
+change the corpus, tokenizer, or coherence settings.
