@@ -39,6 +39,7 @@ print or echo secret values:
 ```dotenv
 API_BASE=https://inference.example
 API_KEY=
+HF_TOKEN=
 LLAMA_BENCHY_MODELS=
 LLAMA_BENCHY_PROFILE=
 ```
@@ -210,6 +211,25 @@ which makes prompt lengths and some metrics approximate: report this clearly
 and ask for the correct tokenizer when accuracy matters. Do not claim a
 successful result has exact token counts when a fallback was used.
 
+When `--tokenizer` is omitted, do not assume that the served ID is the Hugging
+Face ID. First try the exact served ID. If it cannot be loaded, search Hugging
+Face for an exact repository-leaf match after removing terminal deployment or
+quantization suffixes such as `-EXL3`, `-AWQ`, `-GPTQ`, `-GGUF`, `-FP8`,
+`-INT4`, or bit-width suffixes. Prefer the canonical publisher's base model;
+for example, `GLM-5.3-Flash-EXL3` resolves to
+`zai-org/GLM-5.3-Flash`, and `GLM-4.5-Air-AWQ` resolves to
+`zai-org/GLM-4.5-Air`. The CLI performs this fallback for a unique exact
+stem match. Do not choose among multiple matches automatically: ask for the
+intended model or pass its unambiguous `--tokenizer`. If the fallback is used,
+state the resolved tokenizer in the confirmed command and report.
+
+For command preparation, search the Hub when the served ID is not already a
+`namespace/model` ID or has a deployment suffix. Verify the result by checking
+that the repository leaf exactly equals the proposed base stem; do not infer a
+tokenizer from a semantically similar, fine-tuned, or quantized fork. Pass the
+resolved ID explicitly as `--tokenizer <namespace/model>` so the prepared
+command is reproducible.
+
 The first run may download dependencies, tokenizer files and a Project
 Gutenberg corpus. Always pass `--book-url` explicitly. Use this checked
 plain-text Sherlock Holmes mirror by default:
@@ -226,7 +246,8 @@ An unauthenticated Hugging Face warning alone is not a failure; public files
 may still download. Authentication can help with rate limits or gated models.
 Check for `HF_TOKEN` in the process environment or in `.env` in the current
 directory without displaying its value. `huggingface_hub` reads `HF_TOKEN`
-automatically. When it is in `.env`, load it into the command with
+automatically, and it is a normal llama-benchy dependency installed by `uv`
+along with the `hf` CLI. When it is in `.env`, load it into the command with
 `uv run --env-file .env ...` (or `uvx --env-file .env ...`); do not parse or
 print the secret. For example:
 

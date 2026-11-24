@@ -1,3 +1,4 @@
+import os
 import pytest
 import sys
 
@@ -36,6 +37,7 @@ def test_parse_extra_body_rejects_entries_without_separator():
 
 
 def test_from_args_loads_api_defaults_from_env_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(os, "environ", os.environ.copy())
     env_file = tmp_path / ".env"
     env_file.write_text("API_BASE=https://inference.example\nAPI_KEY=test-key\n")
     for key in (
@@ -57,7 +59,44 @@ def test_from_args_loads_api_defaults_from_env_file(monkeypatch, tmp_path):
     assert config.api_key == "test-key"
 
 
+def test_from_args_loads_hf_token_from_env_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(os, "environ", os.environ.copy())
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "API_BASE=https://inference.example\nHF_TOKEN=hugging-face-token\n"
+    )
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["llama-benchy", "--env-file", str(env_file), "--model", "model-a"],
+    )
+
+    BenchmarkConfig.from_args()
+
+    assert os.environ["HF_TOKEN"] == "hugging-face-token"
+
+
+def test_from_args_preserves_existing_hf_token(monkeypatch, tmp_path):
+    monkeypatch.setattr(os, "environ", os.environ.copy())
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "API_BASE=https://inference.example\nHF_TOKEN=file-token\n"
+    )
+    monkeypatch.setenv("HF_TOKEN", "shell-token")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["llama-benchy", "--env-file", str(env_file), "--model", "model-a"],
+    )
+
+    BenchmarkConfig.from_args()
+
+    assert os.environ["HF_TOKEN"] == "shell-token"
+
+
 def test_from_args_preserves_explicit_custom_base_path(monkeypatch, tmp_path):
+    monkeypatch.setattr(os, "environ", os.environ.copy())
     env_file = tmp_path / ".env"
     env_file.write_text("API_BASE=https://unused.example\n")
     monkeypatch.setattr(
@@ -80,6 +119,7 @@ def test_from_args_preserves_explicit_custom_base_path(monkeypatch, tmp_path):
 
 
 def test_default_book_url_uses_waterloo_mirror(monkeypatch, tmp_path):
+    monkeypatch.setattr(os, "environ", os.environ.copy())
     env_file = tmp_path / ".env"
     env_file.write_text("API_BASE=https://inference.example\n")
     monkeypatch.setattr(

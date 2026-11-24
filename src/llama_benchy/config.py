@@ -293,7 +293,10 @@ class BenchmarkConfig(BaseModel):
             "--tokenizer",
             type=str,
             default=None,
-            help="Tokenizer to use (HF model name or local path; defaults to model name)",
+            help=(
+                "Tokenizer to use (HF model name or local path; defaults to model "
+                "name, with HF base-model lookup for recognized deployment suffixes)"
+            ),
         )
         parser.add_argument(
             "--pp",

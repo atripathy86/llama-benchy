@@ -185,7 +185,7 @@ Generally you don't need to disable prompt caching on the server, as a probabili
 -   `--api-key`: API Key (Default: `API_KEY`, then `LLAMA_BENCHY_API_KEY`, then `OPENAI_API_KEY`, otherwise `"EMPTY"`).
 -   `--model`: Model name to use for benchmarking. If not specified, attempts to auto-detect from the endpoint's `/models` endpoint.
 -   `--served-model-name`: Model name used in API calls (Defaults to --model if not specified). Tries to autodetect from the endpoint's `/models` endpoint (if supported, e.g. vLLM).
--   `--tokenizer`: HuggingFace tokenizer name or local path (Defaults to model name).
+-   `--tokenizer`: HuggingFace tokenizer name or local path (Defaults to model name). After an exact load fails, an omitted tokenizer can be resolved automatically by removing recognized serving/quantization suffixes and finding a unique exact base-model name on Hugging Face (for example, `GLM-4.5-Air-AWQ` can resolve to `zai-org/GLM-4.5-Air`).
 -   `--pp`: List of prompt processing token counts (Default: [2048]).
 -   `--tg`: List of token generation counts (Default: [32]).
 -   `--exact-tg`: Force output length to match `--tg` by sending `min_tokens=<tg>` and `ignore_eos=true` in benchmark requests. This is useful for fixed-OSL throughput runs on compatible servers such as vLLM.
@@ -219,10 +219,19 @@ multi-model runner:
 ```dotenv
 API_BASE=https://inference.example
 API_KEY=
+# Optional; used by huggingface_hub for gated or rate-limited models.
+HF_TOKEN=
 LLAMA_BENCHY_MODELS=model-a,model-b
 # Optional: run these profiles sequentially when --profile is omitted.
 LLAMA_BENCHY_PROFILE=smoke,sweep
 ```
+
+`huggingface-hub` is a normal project dependency, so `uv run` and the
+documented `uv pip install -e .` setup install the `hf` CLI as well. An
+`HF_TOKEN` set in the shell takes precedence over the `.env` value. Leave it
+empty for public models; if a tokenizer is gated or Hub rate limits the
+download, provide it through `.env` and run with `uv run --env-file .env ...`.
+Never put the token in command arguments or report files.
 
 The multi-model runner uses one `API_BASE` and runs every selected served model
 in parallel on that endpoint:
