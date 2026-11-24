@@ -40,7 +40,7 @@ class LLMClient:
         extra_body: Optional[Dict[str, Any]] = None,
         exact_tg: bool = False,
     ):
-        self.base_url = base_url
+        self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model_name = model_name
         self.extra_body = extra_body or {}

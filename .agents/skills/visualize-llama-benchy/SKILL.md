@@ -18,11 +18,15 @@ only: do not install dependencies or generate files in that case.
 2. Read and validate the JSON. A single-model report has a `model` and a
    `benchmarks` list; a multi-model runner's `summary.json` has a `models` list
    containing status and embedded reports. Report failed or killed models and
-   empty or missing benchmark data; only `ok` models are plotted from summaries.
+   empty or missing benchmark data; only `ok` models are plotted from
+   summaries. Check endpoint/time provenance: single-model JSON should contain
+   `base_url` and `timestamp`; runner `summary.json` should contain `endpoint`
+   and `generated_at`. Report legacy files that lack these fields instead of
+   guessing.
    The plotting script does not read CSV, Markdown, progress JSONL or raw
    console output. Ask for the saved JSON rather than fabricating data.
 3. Use a fresh, unique output directory beside the selected result, such as
-   `plots-<timestamp>`, and verify it does not exist. The script can overwrite
+   `plots-<UTCtimestamp>`, and verify it does not exist. The script can overwrite
    PNGs in an existing directory. If multiple reports are selected, use a
    separate fresh output directory for each. For a summary, check whether
    model names become identical after replacing characters other than ASCII
@@ -30,7 +34,10 @@ only: do not install dependencies or generate files in that case.
    dots and underscores; the script uses `model` for an empty name. On Windows,
    also compare filenames case-insensitively. If names collide, use the
    individual reports and separate output directories rather than allowing
-   graphs to overwrite each other.
+   graphs to overwrite each other. Preserve the source report's explicit
+   `model-endpoint-test-type-UTCtimestamp` identity in visualization labels and
+   output directory naming when available. Do not load `.env` or contact an
+   endpoint for visualization; endpoint provenance comes from the saved JSON.
 
 ## Generate graphs
 

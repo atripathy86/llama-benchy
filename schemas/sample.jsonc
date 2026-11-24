@@ -4,6 +4,8 @@
   "version": "0.2.2.dev7+gcd427054e",
   // Run timestamp
   "timestamp": "2026-02-07 19:09:00Z",
+  // OpenAI-compatible endpoint base URL
+  "base_url": "http://localhost:8000/v1",
   // Latency measurement mode used
   "latency_mode": "api",
   //  measured or assumed latency in ms

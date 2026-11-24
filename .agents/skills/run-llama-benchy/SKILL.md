@@ -30,6 +30,29 @@ Typical run:
 
 ## Gather requirements
 
+Before asking the user for endpoint details, inspect the current checkout for
+`.env` without printing it. If it exists, interpret the keys described in
+`.env.example`; otherwise ask the user to save or attach a `.env` in that exact
+simple `KEY=value` format. Never ask them to paste a secret into chat, and never
+print or echo secret values:
+
+```dotenv
+API_BASE=https://inference.example
+API_KEY=
+LLAMA_BENCHY_MODELS=
+LLAMA_BENCHY_PROFILE=
+```
+
+`API_BASE` is the server root or OpenAI base. When it is supplied through the
+environment, remove a trailing slash and normalize `/v1/models` or
+`/v1/chat/completions` to `/v1`; otherwise append `/v1` when it is absent.
+`API_KEY` may be empty for an unauthenticated endpoint. `LLAMA_BENCHY_MODELS`
+is an optional comma-separated list for the multi-model runner.
+`LLAMA_BENCHY_PROFILE` is also optional and accepts comma-separated profile
+names; its presence means only those profiles should run, sequentially. The
+explicit `--profile` option overrides it. Do not put a discovered model list,
+token, or other secret into chat.
+
 1. Do not ask open-endedly what benchmark the user wants. Use structured
    selections with recommendations and defaults. Offer free-text input only
    for exceptional values. Default to **Smoke test** if the user asks to run
@@ -38,7 +61,12 @@ Typical run:
 2. Use an OpenAI-compatible API base URL, normally ending in `/v1`, without a
    trailing slash. For a bare server URL, append `/v1`. If given `/v1/models`
    or `/v1/chat/completions`, remove that suffix to obtain the base. Do not
-   silently add `/v1` to an explicitly supplied custom API base path.
+   silently add `/v1` to an explicitly supplied custom API base path. The
+   llama-benchy single-model CLI and `scripts/bench_models.py` load `.env`
+   automatically; `--env-file <path>` selects another file. Explicit CLI
+   arguments override `.env`, while existing shell environment values override
+   file values. The client appends `/models` and `/chat/completions` itself, so
+   use the normalized OpenAI base rather than a complete operation URL.
 3. If an endpoint is given, query it live before model selection using the
    cross-platform Python script in this skill. Run it with `uv run` from the
    llama-benchy checkout root so discovery and benchmarking use the same
@@ -67,8 +95,10 @@ Typical run:
    model may still need loading or may not support chat completions.
    If discovery fails, report the error and ask for a usable endpoint,
    authentication, or explicit model IDs; do not invent models.
-4. If authentication is required, explain how to provide it through an
-   environment variable. Never ask the user to paste a secret
+4. If authentication is required, explain that `API_KEY` in `.env` is
+   supported and that the file must remain untracked; alternatively explain
+   how to provide it through an environment variable. Never ask the user to
+   paste a secret
    into chat or put secrets in skill files, printed commands, or logs. For the
    multi-model runner, the user can set `LLAMA_BENCHY_API_KEY` or
    `OPENAI_API_KEY` in their shell. To send a key during discovery, explicitly
@@ -150,6 +180,13 @@ Typical run:
      the parent directory if it does not exist and verify the target file is
      absent; the CLI does not create parent directories and may overwrite files.
 
+   Artifact names must be explicit and use:
+   `model-endpoint-test-type-UTCtimestamp.extension` (for example
+   `llama-3-localhost-8000-v1-smoke-20261124T183914Z.json`). Use a sanitized
+   endpoint host/port/path and the selected profile or benchmark type. Apply the
+   same convention to Markdown companions and logs. Multi-model summary names
+   use `summary-endpoint-test-type-UTCtimestamp.extension`.
+
    Defaults for options absent from a profile are exact output off, prefix
    caching off, and a JSON report saved under `results`. Use a unique timestamp
    in the filename and verify the path does not already exist. For the
@@ -217,10 +254,10 @@ and verify `uv --version`.
 - Upstream main: `uvx --from git+https://github.com/eugr/llama-benchy llama-benchy`.
 - From a checkout: `uv run llama-benchy`. For an editable install, create
   `.venv` with `uv venv` if needed, then run `uv pip install -e .`.
-- The multi-model runner requires a `bench-models` checkout of
-  `https://github.com/atripathy86/llama-benchy.git`. With permission, clone it
-  into a new directory; otherwise use sequential single-model runs. Do not
-  overwrite existing files or switch a dirty checkout.
+- The multi-model runner is `scripts/bench_models.py` in this checkout. It uses
+  one endpoint and can benchmark multiple served model IDs in parallel. A
+  separate checkout or client is not required. Do not overwrite existing files
+  or switch a dirty checkout.
 
 Verify the chosen CLI with `--help` or `--version` and report setup failures.
 For command-only requests, provide setup instructions without running them.
@@ -251,13 +288,14 @@ command for each selected model, including its resolved context depths and
 distinct output path. Never expose a real API or HF token in displayed
 commands. Use an environment-variable reference or `<redacted>` placeholder,
 and explain if the program must receive a secret through a process argument.
-When using `.env`, show `--env-file .env` in the `uv` command so the actual
+When using `.env`, show `--env-file .env` in the llama-benchy command (and
+`uv run --env-file .env` when Hugging Face tooling must also see it) so the actual
 invocation is reproducible.
 
 For one model, a small starting point is:
 
 ```text
-uv run llama-benchy --base-url <base-url> --api-key EMPTY --model <api-model-id> --pp 512 --tg 32 --depth 0 --concurrency 1 --runs 1 --warmup-runs 1 --latency-mode generation --adapt-prompt --format json --save-result results/<model-slug>_smoke_<timestamp>.json --book-url https://mirror.csclub.uwaterloo.ca/gutenberg/1/6/6/1661/1661-0.txt
+uv run llama-benchy --env-file .env --model <api-model-id> --pp 512 --tg 32 --depth 0 --concurrency 1 --runs 1 --warmup-runs 1 --latency-mode generation --adapt-prompt --format json --save-result results/<model-slug>-<endpoint-slug>-smoke-<UTCtimestamp>.json --book-url https://mirror.csclub.uwaterloo.ca/gutenberg/1/6/6/1661/1661-0.txt
 ```
 
 This example uses a checkout; substitute the selected `uvx` prefix when using
@@ -273,8 +311,20 @@ For multiple models, the branch's existing runner discovers models and can
 produce JSON reports, logs, and a combined summary:
 
 ```text
-uv run python scripts/bench_models.py --base-url <base-url> --models <id1,id2> --profile smoke --runs 1 --output-dir results/<fresh-run-dir> --yes
+uv run python scripts/bench_models.py --env-file .env --models <id1,id2> --profile smoke --runs 1 --output-dir results/<endpoint-slug>-smoke-<UTCtimestamp> --yes
 ```
+
+If `LLAMA_BENCHY_MODELS` contains the confirmed model subset, omit `--models`;
+the runner reads the model subset from `.env`. `LLAMA_BENCHY_PROFILE` is
+optional; when present, its comma-separated values constrain the runner to
+those profiles. Run them sequentially with separate artifact names. An explicit
+`--profile`, including a comma-separated list, overrides that environment
+value. When neither is present, choose a profile interactively or explicitly
+for a non-interactive run. Use `--all` only when the user requests all eligible
+models. The runner supports multiple models on one `API_BASE`, not multiple
+endpoint/client bases in one invocation.
+Benchmark different endpoints with separate runner invocations and separate
+endpoint-qualified output directories.
 
 The runner's `smoke` profile defaults to pp 2048, not the skill's recommended
 pp 512: add `--pp 512` when using the skill's smoke settings. Pass all other
@@ -313,8 +363,10 @@ local process visibility risk.
 For actual runs, monitor until completion; report failures and inspect logs
 rather than claiming success from launch alone. Verify exit status and the
 saved JSON file exists and parses; also verify per-model status for runner
-results. The multi-model runner writes `summary.md`, `summary.json`, per-model
-reports, and `logs/` in its output directory.
+results. The multi-model runner writes explicitly named `summary-*.md`,
+`summary-*.json`, per-model reports, and `logs/` in its output directory. JSON
+reports must contain `base_url` and `timestamp`; summaries must contain
+`endpoint` and `generated_at`. Verify those provenance fields are populated.
 
 End every run with a concise recap that includes:
 

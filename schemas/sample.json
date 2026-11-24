@@ -1,6 +1,7 @@
 {
   "version": "0.2.2.dev7+gcd427054e",
   "timestamp": "2026-02-07 19:09:00Z",
+  "base_url": "http://localhost:8000/v1",
   "latency_mode": "api",
   "latency_ms": 1.2734305734435718,
   "model": "test",

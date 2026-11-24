@@ -19,6 +19,7 @@ class BenchmarkMetric(BaseModel):
 class BenchmarkMetadata(BaseModel):
     version: str = Field(..., description="Benchmark tool version")
     timestamp: str = Field(..., description="Run timestamp")
+    base_url: str = Field(..., description="OpenAI-compatible endpoint base URL")
     latency_mode: str = Field(..., description="Latency measurement mode used")
     latency_ms: float = Field(..., description=" measured or assumed latency in ms")
     model: str = Field(..., description="Model name")

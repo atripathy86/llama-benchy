@@ -241,6 +241,7 @@ class BenchmarkRunner:
                 self.results.metadata = BenchmarkMetadata(
                     version=__version__,
                     timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ"),
+                    base_url=self.config.base_url,
                     latency_mode=self.config.latency_mode,
                     latency_ms=latency * 1000,
                     model=self.config.model,
@@ -263,6 +264,7 @@ class BenchmarkRunner:
                         self.results.metadata = BenchmarkMetadata(
                             version=__version__,
                             timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ"),
+                            base_url=self.config.base_url,
                             latency_mode=self.config.latency_mode,
                             latency_ms=latency * 1000,
                             model=self.config.model,

@@ -89,11 +89,13 @@ Examples:
   python3 scripts/bench_models.py --base-url http://localhost:8000/v1 --models model-a,model-b --profile smoke
   python3 scripts/bench_models.py --base-url http://localhost:8000/v1 --all --profile sweep --dry-run
 
-Results:  <output-dir>/<model>.json + <output-dir>/<model>.md + <output-dir>/summary.{md,json}
-Logs:     <output-dir>/logs/<model>.log
+Results:  <output-dir>/<model>-<endpoint>-<type>-<UTCtimestamp>.{json,md}
+Logs:     <output-dir>/logs/<model>-<endpoint>-<type>-<UTCtimestamp>.log
+Summary:  <output-dir>/summary-<endpoint>-<type>-<UTCtimestamp>.{json,md}
 """
 
 import argparse
+import copy
 import json
 import os
 import re
@@ -103,8 +105,11 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
+
+from llama_benchy.env import load_env_file, normalize_env_base_url
 
 EXCLUDE_RE = re.compile(r"embedding|reranker", re.I)
 POLL_INTERVAL = 2.0
@@ -134,8 +139,24 @@ PROFILES = {
 
 
 def parse_args():
+    env_parser = argparse.ArgumentParser(add_help=False)
+    env_parser.add_argument("--env-file", default=".env")
+    env_args, _ = env_parser.parse_known_args()
+    env_file_explicit = any(
+        token == "--env-file" or token.startswith("--env-file=")
+        for token in sys.argv[1:]
+    )
+    try:
+        load_env_file(
+            env_args.env_file,
+            required=env_file_explicit,
+        )
+    except ValueError as error:
+        sys.exit(f"error: {error}")
+
     default_key = (
-        os.environ.get("LLAMA_BENCHY_API_KEY")
+        os.environ.get("API_KEY")
+        or os.environ.get("LLAMA_BENCHY_API_KEY")
         or os.environ.get("OPENAI_API_KEY")
         or "EMPTY"
     )
@@ -143,10 +164,18 @@ def parse_args():
         description="Run llama-benchy against multiple models in parallel and build a combined summary.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--base-url", required=True, help="OpenAI-compatible endpoint URL (e.g. http://localhost:8000/v1)")
-    p.add_argument("--api-key", default=default_key, help="API key (env: LLAMA_BENCHY_API_KEY or OPENAI_API_KEY)")
-    p.add_argument("--profile", choices=sorted(PROFILES), help="Benchmark profile (interactive menu if omitted)")
-    p.add_argument("--models", help="Comma-separated model ids to benchmark (skips interactive selection)")
+    p.add_argument("--env-file", default=".env", help="Environment file to load before resolving arguments")
+    p.add_argument("--base-url", default=os.environ.get("API_BASE"), help="OpenAI-compatible endpoint URL (env: API_BASE; /v1 is appended when read from it)")
+    p.add_argument("--api-key", default=default_key, help="API key (env: API_KEY, LLAMA_BENCHY_API_KEY, or OPENAI_API_KEY)")
+    p.add_argument(
+        "--profile",
+        help=(
+            "Benchmark profile, or comma-separated profiles "
+            "(env: LLAMA_BENCHY_PROFILE; interactive if omitted)"
+        ),
+        default=os.environ.get("LLAMA_BENCHY_PROFILE"),
+    )
+    p.add_argument("--models", default=os.environ.get("LLAMA_BENCHY_MODELS"), help="Comma-separated model ids to benchmark (env: LLAMA_BENCHY_MODELS)")
     p.add_argument("--all", action="store_true", help="Benchmark every non-embedding/reranker model")
     p.add_argument("--output-dir", default="results", help="Directory for reports, logs and summary")
     p.add_argument("--runs", type=int, default=3, help="Measurement runs per test shape")
@@ -165,11 +194,17 @@ def parse_args():
     args, extras = p.parse_known_args()
     explicit = {
         flag for flag in (
-            "--api-key", "--pp", "--tg", "--depth", "--concurrency",
+            "--base-url", "--api-key", "--pp", "--tg", "--depth", "--concurrency",
             "--runs", "--warmup-runs", "--output-dir", "--unknown-cap", "--margin",
         )
         if flag in sys.argv or any(a.startswith(flag + "=") for a in sys.argv)
     }
+    if not args.base_url:
+        p.error("--base-url is required (or set API_BASE in --env-file)")
+    if "--base-url" not in explicit:
+        args.base_url = normalize_env_base_url(args.base_url)
+    else:
+        args.base_url = args.base_url.rstrip("/")
     return args, extras, explicit
 
 
@@ -319,10 +354,19 @@ def safe_name(model_id, taken):
     return name
 
 
-def build_command(benchy, args, extras, model, prof, depths, json_path):
+def endpoint_name(base_url):
+    parsed = urlsplit(base_url)
+    endpoint = parsed.netloc or parsed.path
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", endpoint).strip("-") or "endpoint"
+
+
+def build_command(benchy, args, extras, explicit, model, prof, depths, json_path):
     cmd = list(benchy) + [
         "--base-url", args.base_url,
-        "--api-key", args.api_key,
+    ]
+    if "--api-key" in explicit:
+        cmd += ["--api-key", args.api_key]
+    cmd += [
         "--model", model,
         "--pp", *[str(v) for v in prof["pp"]],
         "--tg", *[str(v) for v in prof["tg"]],
@@ -548,7 +592,8 @@ def write_summary(out_dir, args, profile, jobs, results):
         if res["status"] == "ok":
             continue
         md_lines += ["", f"### {res['model']} log tail", "", "```", *log_tail(res["log_path"]), "```"]
-    md_path = out_dir / "summary.md"
+    report_label = endpoint_name(args.base_url) + "-" + profile + "-" + results[0]["run_timestamp"]
+    md_path = out_dir / f"summary-{report_label}.md"
     md_path.write_text("\n".join(md_lines) + "\n")
 
     summary_json = {
@@ -567,7 +612,9 @@ def write_summary(out_dir, args, profile, jobs, results):
             for res in results
         ],
     }
-    (out_dir / "summary.json").write_text(json.dumps(summary_json, indent=2) + "\n")
+    (out_dir / f"summary-{report_label}.json").write_text(
+        json.dumps(summary_json, indent=2) + "\n"
+    )
     return md_path
 
 def equivalent_command(args, explicit, selected, profile, extras):
@@ -598,9 +645,23 @@ def equivalent_command(args, explicit, selected, profile, extras):
     return " ".join(cmd + list(extras))
 
 
-def main():
+def parse_profiles(spec):
+    if not spec:
+        return []
+    profiles = [item.strip() for item in spec.split(",") if item.strip()]
+    unknown = [item for item in profiles if item not in PROFILES]
+    if unknown:
+        sys.exit(
+            "error: unknown profile(s): "
+            + ", ".join(unknown)
+            + f"; choose from: {', '.join(sorted(PROFILES))}"
+        )
+    return list(dict.fromkeys(profiles))
 
-    args, extras, explicit = parse_args()
+
+def run_profile(args, extras, explicit):
+    run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    endpoint_slug = endpoint_name(args.base_url)
     models = fetch_models(args.base_url, args.api_key)
     excluded = [m["id"] for m in models if EXCLUDE_RE.search(m["id"])]
     candidates = [m for m in models if not EXCLUDE_RE.search(m["id"])]
@@ -665,7 +726,12 @@ def main():
         cap_s = cap if cap is not None else f"? (capped at {args.unknown_cap})"
         drop_s = f"  [dropped: {', '.join(map(str, dropped))}]" if dropped else ""
         print(f"  - {name:<45} max_input: {cap_s}\n      depths: {' '.join(map(str, depths))}{drop_s}")
-    print(f"\nOutput: {out_dir}/<model>.json | Logs: {logs_dir}/<model>.log | Summary: {out_dir}/summary.md")
+    report_stem = f"{endpoint_slug}-{profile}-{run_timestamp}"
+    print(
+        f"\nOutput: {out_dir}/<model>-{report_stem}.json | "
+        f"Logs: {logs_dir}/<model>-{report_stem}.log | "
+        f"Summary: {out_dir}/summary-{report_stem}.md"
+    )
 
     if extras:
         print(f"Passthrough extras: {' '.join(extras)}")
@@ -677,16 +743,19 @@ def main():
     plan = []
     for name, cap, depths, dropped in cap_info:
         sname = safe_name(name, taken)
-        json_path = out_dir / f"{sname}.json"
-        log_path = logs_dir / f"{sname}.log"
-        cmd = build_command(benchy, args, extras, name, prof, depths, json_path)
+        artifact_stem = f"{sname}-{report_stem}"
+        json_path = out_dir / f"{artifact_stem}.json"
+        log_path = logs_dir / f"{artifact_stem}.log"
+        cmd = build_command(
+            benchy, args, extras, explicit, name, prof, depths, json_path
+        )
         plan.append({"model": name, "safe": sname, "cmd": cmd, "json_path": json_path, "log_path": log_path})
 
     if args.dry_run:
         print("\nDry run — resolved commands:")
         for p in plan:
             print(f"\n[{p['model']}]\n  {' '.join(p['cmd'])}")
-        return
+        return 0
 
     if not args.yes and sys.stdin.isatty():
         try:
@@ -741,6 +810,7 @@ def main():
             "elapsed": (j["end"] or time.time()) - j["start"],
             "report": report, "error": error, "log_path": j["log_path"],
             "json_path": j["json_path"], "md_path": None,
+            "run_timestamp": run_timestamp,
         }
         if res["report"] is not None:
             res["md_path"] = str(write_model_markdown(res, args, profile))
@@ -754,7 +824,7 @@ def main():
     for r in bad:
         print(f"  FAILED/KILLED: {r['model']} ({r['error']})")
     print(f"\nSummary:   {md_path}")
-    print(f"Machine:   {out_dir / 'summary.json'}")
+    print(f"Machine:   {md_path.with_suffix('.json')}")
     for r in ok:
         print(f"  report:   {r['model']} -> {r['json_path']} (+ .md)")
     if bad:
@@ -764,7 +834,23 @@ def main():
             for line in log_tail(r["log_path"], 5):
                 print(f"  {line}")
 
-    sys.exit(0 if not bad else 1)
+    return 0 if not bad else 1
+
+
+def main():
+    args, extras, explicit = parse_args()
+    profiles = parse_profiles(args.profile)
+    if not profiles:
+        profiles = [None]
+
+    exit_code = 0
+    for index, profile in enumerate(profiles):
+        profile_args = copy.copy(args)
+        profile_args.profile = profile
+        if index:
+            print(f"\n{'#' * 70}\nStarting profile: {profile}\n{'#' * 70}")
+        exit_code = max(exit_code, run_profile(profile_args, extras, explicit))
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

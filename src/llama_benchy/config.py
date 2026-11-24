@@ -7,6 +7,7 @@ import re
 import requests
 import sys
 from ._version import __version__
+from .env import load_env_file, normalize_env_base_url
 
 
 class BenchmarkConfig(BaseModel):
@@ -114,6 +115,20 @@ class BenchmarkConfig(BaseModel):
         return extra
 
     @staticmethod
+    def _parse_env_file(path: str) -> Dict[str, str]:
+        from .env import parse_env_file
+
+        return parse_env_file(path)
+
+    @staticmethod
+    def _load_env_file(path: str, required: bool) -> Dict[str, str]:
+        return load_env_file(path, required)
+
+    @staticmethod
+    def _normalize_env_base_url(base_url: str) -> str:
+        return normalize_env_base_url(base_url)
+
+    @staticmethod
     def _detect_hf_model_from_endpoint(base_url: str, api_key: str) -> Tuple[str, str]:
         """
         Fetch models from {base_url}/models endpoint and identify HF model name.
@@ -212,15 +227,54 @@ class BenchmarkConfig(BaseModel):
 
     @classmethod
     def from_args(cls):
+        env_parser = argparse.ArgumentParser(add_help=False)
+        env_parser.add_argument("--env-file", default=".env")
+        env_args, _ = env_parser.parse_known_args()
+        env_file_explicit = any(
+            token == "--env-file" or token.startswith("--env-file=")
+            for token in sys.argv[1:]
+        )
+        try:
+            env_values = cls._load_env_file(
+                env_args.env_file,
+                required=env_file_explicit,
+            )
+        except ValueError as error:
+            print(f"Error: {error}")
+            sys.exit(1)
+
         parser = argparse.ArgumentParser(description="LLM Benchmark Script")
         parser.add_argument(
             "--version", action="version", version=f"%(prog)s {__version__}"
         )
         parser.add_argument(
-            "--base-url", type=str, required=True, help="OpenAI compatible endpoint URL"
+            "--env-file",
+            type=str,
+            default=".env",
+            help="Environment file to load before resolving arguments (default: .env)",
         )
         parser.add_argument(
-            "--api-key", type=str, default="EMPTY", help="API Key for the endpoint"
+            "--base-url",
+            type=str,
+            default=os.environ.get("API_BASE"),
+            help=(
+                "OpenAI compatible endpoint URL "
+                "(env: API_BASE; /v1 is appended when read from API_BASE)"
+            ),
+        )
+        parser.add_argument(
+            "--api-key",
+            type=str,
+            default=(
+                os.environ.get("API_KEY")
+                or os.environ.get("LLAMA_BENCHY_API_KEY")
+                or os.environ.get("OPENAI_API_KEY")
+                or "EMPTY"
+            ),
+            help=(
+                "API Key for the endpoint "
+                "(env: API_KEY, LLAMA_BENCHY_API_KEY, or OPENAI_API_KEY)"
+            ),
         )
         parser.add_argument(
             "--model",
@@ -296,8 +350,14 @@ class BenchmarkConfig(BaseModel):
         parser.add_argument(
             "--book-url",
             type=str,
-            default="https://www.gutenberg.org/files/1661/1661-0.txt",
-            help="URL of a book to use for text generation, defaults to Sherlock Holmes",
+            default=(
+                "https://mirror.csclub.uwaterloo.ca/gutenberg/"
+                "1/6/6/1661/1661-0.txt"
+            ),
+            help=(
+                "URL of a book to use for text generation, defaults to the "
+                "University of Waterloo Gutenberg mirror of Sherlock Holmes"
+            ),
         )
         parser.add_argument(
             "--latency-mode",
@@ -385,6 +445,21 @@ class BenchmarkConfig(BaseModel):
         )
 
         args = parser.parse_args()
+
+        if not args.base_url:
+            parser.error(
+                "--base-url is required (or set API_BASE in the environment or --env-file)"
+            )
+        base_url_from_env = any(
+            token == "--base-url" or token.startswith("--base-url=")
+            for token in sys.argv[1:]
+        ) is False and (
+            "API_BASE" in env_values or "API_BASE" in os.environ
+        )
+        if base_url_from_env:
+            args.base_url = cls._normalize_env_base_url(args.base_url)
+        else:
+            args.base_url = args.base_url.rstrip("/")
 
         if args.no_results_on_fail:
             args.exit_on_first_fail = True

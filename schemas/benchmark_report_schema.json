@@ -234,6 +234,11 @@
       "title": "Timestamp",
       "type": "string"
     },
+    "base_url": {
+      "description": "OpenAI-compatible endpoint base URL",
+      "title": "Base Url",
+      "type": "string"
+    },
     "latency_mode": {
       "description": "Latency measurement mode used",
       "title": "Latency Mode",
@@ -271,6 +276,7 @@
   "required": [
     "version",
     "timestamp",
+    "base_url",
     "latency_mode",
     "latency_ms",
     "model",
