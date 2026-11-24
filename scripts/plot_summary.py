@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot the per-model benchmark data in a combined summary JSON file."""
+"""Plot benchmark data from a single report or combined summary JSON file."""
 
 from __future__ import annotations
 
@@ -44,13 +44,15 @@ def metric_points(
 
 def plot_model(model: str, benchmarks: list[dict[str, Any]], output_dir: Path) -> int:
     try:
+        import matplotlib
+        matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ModuleNotFoundError as exc:
         if exc.name != "matplotlib":
             raise
         raise RuntimeError(
             "matplotlib is required for plotting; install the project dependencies "
-            "with `python -m pip install -e .`"
+            "by running this script with `uv run python` from the checkout"
         ) from exc
 
     prefix = output_dir / safe_filename(model)
@@ -119,15 +121,22 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        data = json.loads(args.summary.read_text())
+        data = json.loads(args.summary.read_text(encoding="utf-8"))
     except FileNotFoundError:
         parser.error(f"summary file not found: {args.summary}")
     except json.JSONDecodeError as exc:
         parser.error(f"invalid JSON in {args.summary}: {exc}")
 
-    models = data.get("models", [])
-    if not isinstance(models, list):
-        parser.error("summary JSON must contain a models list")
+    if not isinstance(data, dict):
+        parser.error("input JSON must be a benchmark report or combined summary object")
+    if "models" in data:
+        models = data["models"]
+        if not isinstance(models, list):
+            parser.error("summary JSON must contain a models list")
+    elif isinstance(data.get("model"), str) and isinstance(data.get("benchmarks"), list):
+        models = [{"model": data["model"], "status": "ok", "report": data}]
+    else:
+        parser.error("input JSON must contain a models list or a model and benchmarks list")
 
     try:
         args.output_dir.mkdir(parents=True, exist_ok=True)

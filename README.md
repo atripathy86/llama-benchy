@@ -127,6 +127,11 @@ Ask your agent: “Use run-llama-benchy to benchmark \<endpoint\>” or ask it t
 generate a command instead. Copilot can also discover the skill directly when
 this repository is open.
 
+The companion [visualize-llama-benchy skill](skills/visualize-llama-benchy/SKILL.md)
+plots saved JSON reports without rerunning benchmarks. Copilot can discover it
+when this repository is open; it can also be installed from the skill directory.
+The plotting script still requires a checkout of this repository.
+
 ## Usage
 
 After installation, you can run the tool directly:
@@ -204,14 +209,25 @@ Generally you don't need to disable prompt caching on the server, as a probabili
 
 ### Plotting combined results
 
-Generate separate throughput and latency graphs for each successful model in `results/summary.json`:
+Generate separate throughput and latency graphs for a single-model JSON report
+or for each successful model in a multi-model `summary.json`:
 
-```bash
-uv pip install -e .
-python scripts/plot_summary.py
+Linux (shell):
+
+```sh
+uv run python scripts/plot_summary.py results/my-report.json --output-dir results/my-plots
 ```
 
-Graphs are written to `results/plots/`. An alternate summary file or output directory can be supplied with `python scripts/plot_summary.py SUMMARY.json --output-dir plots`.
+Windows (PowerShell):
+
+```powershell
+uv run python scripts\plot_summary.py results\my-report.json --output-dir results\my-plots
+```
+
+The script defaults to `results/summary.json` and `results/plots/` if paths
+are omitted. Use a fresh output directory to avoid overwriting existing graphs.
+The graphs show aggregate throughput and latency with standard deviation error
+bars; they do not plot time series or overlay models.
 
 For fixed-output-length throughput benchmarks, prefer `--exact-tg` over manually passing `min_tokens` and `ignore_eos`:
 
